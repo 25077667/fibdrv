@@ -88,7 +88,8 @@ void test_bigN(void)
     bigN_init(&b, 1, false);
     bigN_add(&c, &a, &b);
 }
-test_bigN();
+test_bigN(void);
+
 static long long fib_sequence(long long k)
 {
     /* FIXME: use clz/ctz and fast algorithms to speed up */
