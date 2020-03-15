@@ -6,6 +6,7 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
+#include <stdbool.h>
 
 MODULE_LICENSE("Dual MIT/GPL");
 MODULE_AUTHOR("National Cheng Kung University, Taiwan");
@@ -18,12 +19,76 @@ MODULE_VERSION("0.1");
  * ssize_t can't fit the number > 92
  */
 #define MAX_LENGTH 92
+#define POOL_SIZE 1000000
 
 static dev_t fib_dev = 0;
 static struct cdev *fib_cdev;
 static struct class *fib_class;
 static DEFINE_MUTEX(fib_mutex);
 
+long long memPool[POOL_SIZE] = {0, 1};
+unsigned int memTail = 1;
+
+typedef struct bigN {
+    unsigned long long *num;
+    unsigned int _len, _offset;
+} BigN;
+
+unsigned int estimateLen(unsigned long long index)
+{
+    return ((index * 695 / 1000) >> 6) + 1;
+}
+
+int bigN_init(BigN *a, unsigned int len, bool is_index)
+{
+    /*If is index needing to estimate*/
+    a->_len = (is_index) ? estimateLen(len) : len;
+    a->num = memPool + memTail;
+    a->_offset = memTail;
+    memTail += len;
+    return memTail < POOL_SIZE; /*retrun 1 if alloc success*/
+}
+
+
+/*
+ * Test weather a is greather than b.
+ */
+int bigN_greather(BigN *a, BigN *b)
+{
+    int a_l = a->_len;
+    int b_l = b->_len;
+    int i = 0;
+    if (a_l ^ b_l) /* a->_len is diff. with b->_len*/
+        return a_l > b_l;
+    unsigned long long *a_tmp = a->num;
+    unsigned long long *b_tmp = b->num;
+    while (i < a_l && a_tmp[i] == b_tmp[i]) {
+        i++;
+    }
+    if (i == a_l)
+        return 0;
+    return a_tmp[i] > b_tmp[i];
+}
+
+/*
+ * @para result is the reult without initialized.
+ */
+void bigN_add(BigN *result, BigN *a, BigN *b)
+{
+    BigN *bigger = bigN_greather(b, a) ? b : a;
+    if (bigN_init(result, bigger->_len + 1, false)) {
+        /* do add a and b to result */
+    }
+}
+
+void test_bigN(void)
+{
+    BigN a, b, c;
+    bigN_init(&a, 1, false);
+    bigN_init(&b, 1, false);
+    bigN_add(&c, &a, &b);
+}
+test_bigN();
 static long long fib_sequence(long long k)
 {
     /* FIXME: use clz/ctz and fast algorithms to speed up */
