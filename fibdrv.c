@@ -104,6 +104,7 @@ static BigN fibonacci(int k)
 
     for (int i = 2; i <= k; i++) {
         f[i] = bigN_add(f[i - 1], f[i - 2]);
+        kfree(f[i - 2]);
     }
 
     return *f[k];
@@ -160,6 +161,7 @@ static ssize_t fib_read(struct file *file,
     }
     snprintf(k_buf + prev_byte, 1, "\n");
     copy_to_user(buf, k_buf, prev_byte + 1);
+    kfree(k_buf);
     return fib_sequence(*offset);
 }
 
