@@ -106,7 +106,6 @@ static BigN fibonacci(int k)
         f[i] = bigN_add(f[i - 1], f[i - 2]);
         kfree(f[i - 2]);
     }
-
     return *f[k];
 }
 
