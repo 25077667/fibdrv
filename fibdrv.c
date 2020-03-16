@@ -6,6 +6,8 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
+#include <linux/slab.h>
+#include <linux/uaccess.h>
 #include <stdbool.h>
 
 MODULE_LICENSE("Dual MIT/GPL");
@@ -18,20 +20,16 @@ MODULE_VERSION("0.1");
 /* MAX_LENGTH is set to 92 because
  * ssize_t can't fit the number > 92
  */
-#define MAX_LENGTH 92
-#define POOL_SIZE 1000000
+#define MAX_LENGTH 100
 
 static dev_t fib_dev = 0;
 static struct cdev *fib_cdev;
 static struct class *fib_class;
 static DEFINE_MUTEX(fib_mutex);
 
-long long memPool[POOL_SIZE] = {0, 1};
-unsigned int memTail = 1;
-
 typedef struct bigN {
     unsigned long long *num;
-    unsigned int _len, _offset;
+    unsigned int len;
 } BigN;
 
 unsigned int estimateLen(unsigned long long index)
@@ -39,26 +37,25 @@ unsigned int estimateLen(unsigned long long index)
     return ((index * 695 / 1000) >> 6) + 1;
 }
 
-int bigN_init(BigN *a, unsigned int len, bool is_index)
+static BigN *bigN_init(unsigned int _len, bool is_index)
 {
     /*If is index needing to estimate*/
-    a->_len = (is_index) ? estimateLen(len) : len;
-    a->num = memPool + memTail;
-    a->_offset = memTail;
-    memTail += len;
-    return memTail < POOL_SIZE; /*retrun 1 if alloc success*/
+    BigN *a = (BigN *) kmalloc(sizeof(BigN), GFP_KERNEL);
+    a->len = (is_index) ? estimateLen(_len) : _len;
+    a->num = (long long *) kmalloc(sizeof(long long *) * a->len, GFP_KERNEL);
+    return a; /*retrun 1 if alloc success*/
 }
 
 
 /*
  * Test weather a is greather than b.
  */
-int bigN_greather(BigN *a, BigN *b)
+static int bigN_greather(BigN *a, BigN *b)
 {
-    int a_l = a->_len;
-    int b_l = b->_len;
+    int a_l = a->len;
+    int b_l = b->len;
     int i = 0;
-    if (a_l ^ b_l) /* a->_len is diff. with b->_len*/
+    if (a_l ^ b_l) /* a->len is diff. with b->len*/
         return a_l > b_l;
     unsigned long long *a_tmp = a->num;
     unsigned long long *b_tmp = b->num;
@@ -70,25 +67,47 @@ int bigN_greather(BigN *a, BigN *b)
     return a_tmp[i] > b_tmp[i];
 }
 
-/*
- * @para result is the reult without initialized.
- */
-void bigN_add(BigN *result, BigN *a, BigN *b)
+static BigN *bigN_add(BigN *a, BigN *b)
 {
     BigN *bigger = bigN_greather(b, a) ? b : a;
-    if (bigN_init(result, bigger->_len + 1, false)) {
+    BigN *result = bigN_init(bigger->len + 1, false);
+    if (result) {
         /* do add a and b to result */
+        unsigned int total_len = result->len;
+        unsigned int carry = 0;
+        while (total_len--) {
+            bool significant_bit = (a->num[total_len] | b->num[total_len]) >>
+                                   sizeof(long long) >> 8;
+
+            result->num[total_len] =
+                a->num[total_len] + b->num[total_len] + carry;
+
+            carry = (~(result->num[total_len] >> sizeof(long long) >> 8)) &&
+                    significant_bit;
+        }
     }
+    return result;
 }
 
-void test_bigN(void)
+static BigN fibonacci(int k)
 {
-    BigN a, b, c;
-    bigN_init(&a, 1, false);
-    bigN_init(&b, 1, false);
-    bigN_add(&c, &a, &b);
+    // test_bigN();
+    /* FIXME: use clz/ctz and fast algorithms to speed up */
+    // long long f[k + 2];
+    BigN *f[k + 2];
+
+    f[0] = bigN_init(0, true);
+    f[1] = bigN_init(1, true);
+
+    f[0]->num[0] = 0;
+    f[1]->num[0] = 1;
+
+    for (int i = 2; i <= k; i++) {
+        f[i] = bigN_add(f[i - 1], f[i - 2]);
+    }
+
+    return *f[k];
 }
-test_bigN(void);
 
 static long long fib_sequence(long long k)
 {
@@ -126,7 +145,22 @@ static ssize_t fib_read(struct file *file,
                         size_t size,
                         loff_t *offset)
 {
-    return (ssize_t) fib_sequence(*offset);
+    // return (ssize_t) fib_sequence(*offset);
+    BigN result = fibonacci(*offset);
+    char *k_buf = (char *) kmalloc(
+        2 * result.len * result.len + 7 * result.len,
+        GFP_KERNEL); /*Usage increase: (2 * n ^ 2 + 7 * n) is quadratic*/
+    int prev_byte = 0;
+    for (int i = 0; i < result.len; i++, prev_byte++) {
+        snprintf(k_buf + prev_byte, 8, "%llu", result.num[i]);
+        prev_byte += 8;
+        for (int j = 0; j < result.len - 1 - i; j++, prev_byte += 4)
+            snprintf(k_buf + prev_byte, 4, "<<64");
+        snprintf(k_buf + prev_byte, 1, "+");
+    }
+    snprintf(k_buf + prev_byte, 1, "\n");
+    copy_to_user(buf, k_buf, prev_byte + 1);
+    return fib_sequence(*offset);
 }
 
 /* write operation is skipped */
