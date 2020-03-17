@@ -69,11 +69,14 @@ static int bigN_greather(BigN *a, BigN *b)
 
 static BigN *bigN_add(BigN *a, BigN *b)
 {
-    BigN *bigger = bigN_greather(b, a) ? b : a;
-    BigN *result = bigN_init(bigger->len + 1, false);
+    BigN *bigger = bigN_greather(a, b) ? a : b;
+    BigN *result = bigN_init(bigger->len, false);
     if (result) {
-        /* do add a and b to result */
-        unsigned int total_len = result->len;
+        /*
+         * Do add a and b to result.
+         * For the block_i which is [i], which is meaning (1<<64)^i
+         */
+        unsigned int total_len = bigger->len;
         unsigned int carry = 0;
         while (total_len--) {
             bool significant_bit = (a->num[total_len] | b->num[total_len]) >>
@@ -109,20 +112,20 @@ static BigN fibonacci(int k)
     return *f[k];
 }
 
-static long long fib_sequence(long long k)
-{
-    /* FIXME: use clz/ctz and fast algorithms to speed up */
-    long long f[k + 2];
+/*static long long fib_sequence(long long k)
+{*/
+/* FIXME: use clz/ctz and fast algorithms to speed up */
+/*long long f[k + 2];
 
-    f[0] = 0;
-    f[1] = 1;
+f[0] = 0;
+f[1] = 1;
 
-    for (int i = 2; i <= k; i++) {
-        f[i] = f[i - 1] + f[i - 2];
-    }
-
-    return f[k];
+for (int i = 2; i <= k; i++) {
+    f[i] = f[i - 1] + f[i - 2];
 }
+
+return f[k];
+}*/
 
 static int fib_open(struct inode *inode, struct file *file)
 {
@@ -161,7 +164,7 @@ static ssize_t fib_read(struct file *file,
     snprintf(k_buf + prev_byte, 1, "\n");
     copy_to_user(buf, k_buf, prev_byte + 1);
     kfree(k_buf);
-    return fib_sequence(*offset);
+    return result.num[result.len - 1];
 }
 
 /* write operation is skipped */
