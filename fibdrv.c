@@ -174,10 +174,10 @@ static ssize_t fib_read(struct file *file,
         2 * result.len * result.len + 7 * result.len,
         GFP_KERNEL); /*Usage increase: (2 * n ^ 2 + 7 * n) is quadratic*/
     int prev_byte = 0;
-    for (int i = 0; i < result.len; i++, prev_byte++) {
+    for (int i = result.len - 1; i >= 0; i--, prev_byte++) {
         snprintf(k_buf + prev_byte, 8, "%llu", result.num[i]);
         prev_byte += 8;
-        for (int j = 0; j < result.len - 1 - i; j++, prev_byte += 4)
+        for (int j = 0; j < i; j++, prev_byte += 4)
             snprintf(k_buf + prev_byte, 4, "<<64");
         snprintf(k_buf + prev_byte, 1, "+");
     }
