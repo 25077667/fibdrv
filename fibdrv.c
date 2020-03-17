@@ -7,6 +7,7 @@
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/slab.h>
+#include <linux/string.h>
 #include <linux/uaccess.h>
 #include <stdbool.h>
 
@@ -43,6 +44,7 @@ static BigN *bigN_init(unsigned int _len, bool is_index)
     BigN *a = (BigN *) kmalloc(sizeof(BigN), GFP_KERNEL);
     a->len = (is_index) ? estimateLen(_len) : _len;
     a->num = (long long *) kmalloc(sizeof(long long *) * a->len, GFP_KERNEL);
+    memset(a->num, 0, sizeof(long long) * a->len);
     return a; /*retrun 1 if alloc success*/
 }
 
@@ -67,10 +69,27 @@ static int bigN_greather(BigN *a, BigN *b)
     return a_tmp[i] > b_tmp[i];
 }
 
+void binN_resize(BigN *a)
+{
+    int i;
+    for (i = 0; i < a->len && ffs(a->num[i]); i++)
+        ;
+    if (i < a->len) {
+        long long *new_Num =
+            (long long *) kmalloc(sizeof(long long) * i, GFP_KERNEL);
+        /*Copy origin number to new number buffer*/
+        memcpy(new_Num, a->num, sizeof(long long) * i);
+        kfree(a->num);
+        a->num = new_Num;
+        /*Fix the len to new size*/
+        a->len = i;
+    }
+}
+
 static BigN *bigN_add(BigN *a, BigN *b)
 {
     BigN *bigger = bigN_greather(a, b) ? a : b;
-    BigN *result = bigN_init(bigger->len, false);
+    BigN *result = bigN_init(bigger->len + 1, false);
     if (result) {
         /*
          * Do add a and b to result.
@@ -89,6 +108,7 @@ static BigN *bigN_add(BigN *a, BigN *b)
                     significant_bit;
         }
     }
+    binN_resize(result);
     return result;
 }
 
@@ -111,8 +131,8 @@ static BigN fibonacci(int k)
     }
     return *f[k];
 }
-
-/*static long long fib_sequence(long long k)
+/*
+static long long fib_sequence(long long k)
 {*/
 /* FIXME: use clz/ctz and fast algorithms to speed up */
 /*long long f[k + 2];
@@ -164,7 +184,7 @@ static ssize_t fib_read(struct file *file,
     snprintf(k_buf + prev_byte, 1, "\n");
     copy_to_user(buf, k_buf, prev_byte + 1);
     kfree(k_buf);
-    return result.num[result.len - 1];
+    return result.num[0];
 }
 
 /* write operation is skipped */
