@@ -105,11 +105,53 @@ static BigN *bigN_add(BigN *a, BigN *b)
     return result;
 }
 
+static BigN *bigN_sub(BigN *a, BigN *b)
+{
+    BigN *bigger, *smaller;
+    (bigN_greather(a, b) ? (bigger = a, smaller = b)
+                         : (bigger = b, smaller = a));
+    BigN *result = bigN_init(bigger->len, false);
+
+    /*Padding 0 to small head*/
+    int padding_len = bigger->len - smaller->len;
+    if (padding_len) {
+        long long *new_num =
+            kmalloc(sizeof(long long) * bigger->len, GFP_KERNEL);
+        memset(new_num, 0, sizeof(long long) * bigger->len);
+        memcpy(new_num, smaller->num, sizeof(long long) * smaller->len);
+        kfree(smaller->num);
+        smaller->num = new_num;
+    }
+    for (int i = 0; i < a->len; i++) {
+        /*
+         * Have bugs when
+         * 1. the highest block need to borrow 1 from extra
+         * non-existing block.
+         * 2. lookahead borrow bit: That blocks looks like:
+         * >    \
+         * __might_exist__|0000......00000|__a_block_need_borrow_bit_from_left__|
+         * >
+         * >    How can I know is there exist some bits can borrow?
+         * */
+        if (a->num[i] < b->num[i]) {
+            if (i == a->len - 1) {
+                /*
+                 * I give up!
+                 * Give it undefined!!!
+                 *
+                 * Doing nothing here.
+                 * */
+            } else {
+                a->num[i + 1]--;
+            }
+        }
+        result->num[i] = a->num[i] - b->num[i];
+    }
+}
+
 static BigN fibonacci(int k)
 {
-    // test_bigN();
     /* FIXME: use clz/ctz and fast algorithms to speed up */
-    // long long f[k + 2];
     BigN *f[k + 2];
 
     f[0] = bigN_init(0, true);
