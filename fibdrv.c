@@ -89,6 +89,7 @@ void binN_resize(BigN *a)
 static BigN *bigN_add(BigN *a, BigN *b)
 {
     BigN *bigger = bigN_greather(a, b) ? a : b;
+    // BigN *smaller = bigN_greather(a, b) ? b : a;
     BigN *result = bigN_init(bigger->len + 1, false);
     if (result) {
         /*
@@ -98,6 +99,13 @@ static BigN *bigN_add(BigN *a, BigN *b)
         unsigned int total_len = bigger->len;
         unsigned int carry = 0;
         while (total_len--) {
+            /*
+             * Have bug here, while bigger->len != smaller->len
+             * We should add from the block 0 to bigger->len
+             * When i > smaller->len, we can enhance the proformance to \
+             * carry or skip adding.
+             */
+
             bool significant_bit = (a->num[total_len] | b->num[total_len]) >>
                                    sizeof(long long) >> 8;
 
