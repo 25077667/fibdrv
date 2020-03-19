@@ -23,8 +23,6 @@ MODULE_VERSION("0.1");
  */
 #define MAX_LENGTH 100
 
-#define SIGINIFICANT_BIT(x) (x) >> sizeof((x)) >> 8
-
 static dev_t fib_dev = 0;
 static struct cdev *fib_cdev;
 static struct class *fib_class;
@@ -58,31 +56,26 @@ static int bigN_greather(BigN *a, BigN *b)
 {
     int a_l = a->len;
     int b_l = b->len;
-    int i = 0;
     if (a_l ^ b_l) /* a->len is diff. with b->len*/
         return a_l > b_l;
-    unsigned long long *a_tmp = a->num;
-    unsigned long long *b_tmp = b->num;
-    while (i < a_l && a_tmp[i] == b_tmp[i]) {
-        i++;
+    int i = a->len; /* a->len == b->len */
+    while (i-- && a->num[i] == b->num[i]) {
     }
-    if (i == a_l)
-        return 0;
-    return a_tmp[i] > b_tmp[i];
+    return a->num[i] > b->num[i];
 }
 
-void binN_resize(BigN *a)
+static void binN_resize(BigN *a)
 {
     int i;
-    for (i = 0; i < a->len && ffs(a->num[i]); i++)
+    for (i = 0; i < a->len && a->num[i]; i++)
         ;
     if (i < a->len) {
-        long long *new_Num =
+        long long *new_num =
             (long long *) kmalloc(sizeof(long long) * i, GFP_KERNEL);
         /*Copy origin number to new number buffer*/
-        memcpy(new_Num, a->num, sizeof(long long) * i);
+        memcpy(new_num, a->num, sizeof(long long) * i);
         kfree(a->num);
-        a->num = new_Num;
+        a->num = new_num;
         /*Fix the len to new size*/
         a->len = i;
     }
@@ -90,27 +83,25 @@ void binN_resize(BigN *a)
 
 static BigN *bigN_add(BigN *a, BigN *b)
 {
-    BigN *bigger = bigN_greather(a, b) ? a : b;
-    BigN *smaller = bigN_greather(a, b) ? b : a;
+    BigN *bigger, *smaller;
+    (bigN_greather(a, b) ? (bigger = a, smaller = b)
+                         : (bigger = b, smaller = a));
     BigN *result = bigN_init(bigger->len + 1, false);
     if (result) {
         /*
          * Do add a and b to result.
          * For the block_i which is [i], which is meaning (1<<64)^i
          */
-        int i, carry = 0;
-        for (i = 0; i < smaller->len; i++) {
-            bool largest_bit = SIGINIFICANT_BIT(a->num[i] | b->num[i]);
-            result->num[i] = a->num[i] + b->num[i] + carry;
-            carry = (~(SIGINIFICANT_BIT(result->num[i]))) && largest_bit;
+        unsigned int i, carry = 0;
+        for (i = 0; i < bigger->len; i++) {
+            unsigned long long smaller_exist =
+                (i < smaller->len) ? smaller->num[i] : 0;
+            result->num[i] = bigger->num[i] + smaller_exist + carry;
+            carry = (bigger->num[i] > (0xffffffffffffffff ^ smaller_exist));
         }
-        if (bigger->len > i) {
-            bigger->num[i] += carry;
-            memcpy(&(result->num[i]), &(bigger->num[i]),
-                   sizeof(long long) * (bigger->len - i));
-        }
+        result->num[i] += carry;
+        binN_resize(result);
     }
-    binN_resize(result);
     return result;
 }
 
@@ -170,11 +161,13 @@ static ssize_t fib_read(struct file *file,
                         size_t size,
                         loff_t *offset)
 {
-    // return (ssize_t) fib_sequence(*offset);
+    __u64 pre_time = ktime_get_ns();
     BigN result = fibonacci(*offset);
-    char *k_buf = (char *) kmalloc(
-        2 * result.len * result.len + 7 * result.len,
-        GFP_KERNEL); /*Usage increase: (2 * n ^ 2 + 7 * n) is quadratic*/
+    __u64 post_time = ktime_get_ns();
+
+    /*Usage increase: (2 * n ^ 2 + 7 * n) is quadratic*/
+    char *k_buf = (char *) kmalloc(2 * result.len * result.len + 7 * result.len,
+                                   GFP_KERNEL);
     int prev_byte = 0;
     for (int i = result.len - 1; i >= 0; i--, prev_byte++) {
         snprintf(k_buf + prev_byte, 8, "%llu", result.num[i]);
@@ -186,7 +179,7 @@ static ssize_t fib_read(struct file *file,
     snprintf(k_buf + prev_byte, 1, "\n");
     copy_to_user(buf, k_buf, prev_byte + 1);
     kfree(k_buf);
-    return result.num[0];
+    return post_time - pre_time;
 }
 
 /* write operation is skipped */
