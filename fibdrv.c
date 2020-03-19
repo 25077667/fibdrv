@@ -147,6 +147,7 @@ static BigN *bigN_sub(BigN *a, BigN *b)
         }
         result->num[i] = a->num[i] - b->num[i];
     }
+    return result;
 }
 
 static BigN fibonacci(int k)
