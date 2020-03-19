@@ -23,6 +23,8 @@ MODULE_VERSION("0.1");
  */
 #define MAX_LENGTH 100
 
+#define SIGINIFICANT_BIT(x) (x) >> sizeof((x)) >> 8
+
 static dev_t fib_dev = 0;
 static struct cdev *fib_cdev;
 static struct class *fib_class;
@@ -89,31 +91,23 @@ void binN_resize(BigN *a)
 static BigN *bigN_add(BigN *a, BigN *b)
 {
     BigN *bigger = bigN_greather(a, b) ? a : b;
-    // BigN *smaller = bigN_greather(a, b) ? b : a;
+    BigN *smaller = bigN_greather(a, b) ? b : a;
     BigN *result = bigN_init(bigger->len + 1, false);
     if (result) {
         /*
          * Do add a and b to result.
          * For the block_i which is [i], which is meaning (1<<64)^i
          */
-        unsigned int total_len = bigger->len;
-        unsigned int carry = 0;
-        while (total_len--) {
-            /*
-             * Have bug here, while bigger->len != smaller->len
-             * We should add from the block 0 to bigger->len
-             * When i > smaller->len, we can enhance the proformance to \
-             * carry or skip adding.
-             */
-
-            bool significant_bit = (a->num[total_len] | b->num[total_len]) >>
-                                   sizeof(long long) >> 8;
-
-            result->num[total_len] =
-                a->num[total_len] + b->num[total_len] + carry;
-
-            carry = (~(result->num[total_len] >> sizeof(long long) >> 8)) &&
-                    significant_bit;
+        int i, carry = 0;
+        for (i = 0; i < smaller->len; i++) {
+            bool largest_bit = SIGINIFICANT_BIT(a->num[i] | b->num[i]);
+            result->num[i] = a->num[i] + b->num[i] + carry;
+            carry = (~(SIGINIFICANT_BIT(result->num[i]))) && largest_bit;
+        }
+        if (bigger->len > i) {
+            bigger->num[i] += carry;
+            memcpy(&(result->num[i]), &(bigger->num[i]),
+                   sizeof(long long) * (bigger->len - i));
         }
     }
     binN_resize(result);
