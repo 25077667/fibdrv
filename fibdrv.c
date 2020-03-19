@@ -131,7 +131,7 @@ static BigN *bigN_sub(BigN *a, BigN *b)
          * >    \
          * __might_exist__|0000......00000|__a_block_need_borrow_bit_from_left__|
          * >
-         * >    How can I know is there exist some bits can borrow?
+         * >    How can I know if there exist some bits can be borrowed?
          * */
         if (a->num[i] < b->num[i]) {
             if (i == a->len - 1) {
